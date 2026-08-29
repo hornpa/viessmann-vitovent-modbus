@@ -1,0 +1,56 @@
+name: Register confirmation or mapping
+about: Confirm, correct, or extend the reverse-engineered register map
+title: "[Register] "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve the register map. Please include reproducible observations and avoid writing to unknown registers unless you understand the risk.
+  - type: input
+    id: unit
+    attributes:
+      label: Unit type
+      description: Example: Vitovent 300-W H32E C325
+      placeholder: Vitovent 300-W H32E C325
+    validations:
+      required: true
+  - type: input
+    id: firmware
+    attributes:
+      label: Firmware / controller version
+      description: Enter the version if known.
+    validations:
+      required: false
+  - type: input
+    id: register
+    attributes:
+      label: Register address
+      placeholder: "2001"
+    validations:
+      required: true
+  - type: dropdown
+    id: function
+    attributes:
+      label: Modbus function
+      options:
+        - FC03 Read Holding Register
+        - FC04 Read Input Register
+        - FC06 Write Single Register
+        - Other / unknown
+    validations:
+      required: true
+  - type: textarea
+    id: observation
+    attributes:
+      label: Observation
+      description: Describe values, scaling, conditions, and what changed on the unit.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence / reproduction steps
+      description: Include raw frames, scan output, LB1 sniffing observations, or steps to reproduce where possible.
+    validations:
+      required: false
