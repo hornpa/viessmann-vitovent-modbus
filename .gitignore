@@ -1,0 +1,22 @@
+# OS metadata
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Editors / IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Python tooling used for local Modbus tests
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+
+# Local captures / temporary scan output
+*.log
+*.tmp
