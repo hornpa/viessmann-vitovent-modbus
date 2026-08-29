@@ -27,6 +27,8 @@
 | `README.md` | This document — background, wiring, and the full register map. |
 | [`loxone-template-MB_Vitovent_300-W.xml`](loxone-template-MB_Vitovent_300-W.xml) | Ready-to-import Loxone Config Modbus device template (stage actuator + all mapped sensors). |
 | [`registers-raw.jsonl`](registers-raw.jsonl) | Raw scan data: every existing register (FC03/FC04, addresses 0–65535) with the value read at scan time. One JSON object per line. |
+| `loxone-example-program.png` / `loxone-example-filter.png` | Wiring diagrams of the reference Loxone implementation (see §9; German labels). |
+| `ha-dashboard-background.png` / `ha-dashboard-cheatsheet.png` | Plant schematic as a Home Assistant picture-elements background (empty value slots) + a cheat sheet mapping each slot to its register/sensor. |
 
 ## Table of contents
 
@@ -38,6 +40,7 @@
 6. [Reproducing the scan](#6-reproducing-the-scan)
 7. [Findings from sniffing the LB1 traffic](#7-findings-from-sniffing-the-lb1--unit-traffic)
 8. [Open questions](#8-open-questions--contributions-welcome)
+9. [Field report: a complete Loxone implementation](#9-field-report-a-complete-loxone-implementation)
 
 ---
 
@@ -230,6 +233,43 @@ To resolve the remaining unknowns we put the gateway into transparent mode (pass
 - Behaviour with Vitocal/Vitoconnect attached, and on other H-series variants (H32S, C400) and firmware revisions.
 
 Open an issue/PR if you can confirm or extend the map.
+
+## 9. Field report: a complete Loxone implementation
+
+We run the unit in production with a **Loxone Modbus Extension** as the only bus master — no gateway, no extra hardware, the ventilation stays in the wired automation layer, fully independent of Home Assistant, WiFi or any cloud. Here is the complete setup, including what worked well and what did not.
+
+### Setup
+
+- **Bus**: Extension configured 19200/8/E/1, device address 70, wired to X15 (+/−/GND).
+- **Device**: created from the included [template](loxone-template-MB_Vitovent_300-W.xml) — one actuator on register 2002 (with a **60 s cyclic resend** that doubles as a power-loss re-arm) plus all mapped sensors with ÷10 corrections preconfigured.
+- **Program** (9 function blocks, wiring diagrams included — labels are German, the structure is self-explanatory):
+  - **Radio buttons (6 options)** — *Auto / stages 1–4 / boost 45 min* — as the single user-facing control (app, wall tablets, and via bridge also HA). Its inputs stay unwired; users only tap.
+  - **Status block "auto stage"**: presence/vacation/sleep flags plus a humidity trigger (bathroom sensors > 68 % through a 45-min stairwell timer) resolve to a stage 1–4. Rule rows read top-down, first match wins.
+  - **Status block "target stage"**: arbitrates boost > manual selection > auto result and feeds the 2002 actuator. Because rows are evaluated top-down, no compound conditions are needed at all.
+  - **Boost**: radio-button output → 45-min stairwell timer → target-stage input; a NOT gate on the timer output re-selects "Auto" when the timer expires.
+  - **Filter countdown built from the unit's own hour counter (reg 2000)**: an analog memory (retention enabled!) stores the counter value when the "filter changed" button is pressed; subtract + ÷24 + (365 − x) yields remaining days; a threshold at 8760 h fires a push notification. This replaces the LB1's panel-local counter entirely.
+  - **Bypass status**: tiny status block on register 1128 (≥ 200 = open) for a human-readable flap state. The bypass itself stays in the unit's automatic mode (6006 = 0).
+- **Visualisation**: only the radio buttons, the target-stage status text (which doubles as a nice "Auto: normal / Boost active" display), filter button + remaining days, temperatures/humidities. Everything bridges into **Home Assistant via PyLoxone**, where a picture-elements card over a schematic shows the live values — the background image is included ([`ha-dashboard-background.png`](ha-dashboard-background.png), empty framed slots ready for your `state-label` overlays, bypass automation rule annotated at the flap) together with a cheat sheet ([`ha-dashboard-cheatsheet.png`](ha-dashboard-cheatsheet.png)) that maps each slot to its register/sensor.
+
+![Loxone program overview](loxone-example-program.png)
+![Filter countdown chain](loxone-example-filter.png)
+
+### Strengths
+
+- **Native RTU master** — no protocol gateway, no WiFi link, one less box; the unit remains controllable even with HA or internet down.
+- The **cyclic actuator resend** elegantly covers the open question of register persistence across power loss.
+- **Status blocks are a great fit** for this register map: the rule table mirrors the stage semantics 1:1, and each rule's status text gives you a polished UI state for free.
+- The **device template** does all the tedious per-register setup (function codes, scaling, polling cycles) in one import.
+- Using the **unit's own operating-hours counter** for the filter interval survives controller reboots and needs no clock arithmetic.
+
+### Weaknesses / gotchas
+
+- **Program logic cannot be imported or exported** in Loxone Config — only device templates. The blocks must be rebuilt by hand (that is what the wiring images are for).
+- **Status blocks cannot compute**: outputs are fixed per rule, and text fields only support `*N`/`/N` scaling — no subtraction. Any arithmetic (the countdown) needs separate subtract/divide or formula blocks.
+- The **analog memory must have retention enabled**, otherwise the filter mark is lost on every Miniserver reboot and the countdown fires a false alarm.
+- The **Modbus Extension has no built-in 120 Ω termination** (fine on short runs; terminate externally on long ones).
+- Register 2000 is 16-bit — the hour counter **wraps after ~7.5 years**; re-set your filter mark when it does.
+- Loxone has **no native long-duration countdown block**, hence the four-block DIY chain for a simple "365 days" timer.
 
 ## Disclaimer
 
